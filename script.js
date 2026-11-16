@@ -224,6 +224,15 @@ document.addEventListener('keydown', (e) => {
 //   arm 32 -> hena-armeabi-v7a.apk (~43 MB)
 //   x86_64 -> hena-x86_64.apk      (~50 MB)
 // Anything else keeps the universal APK as a safe fallback.
+
+// ---------------------------------------------------------------------------
+// Architecture aware download
+// The main download button used to always serve the universal APK (all ABIs,
+// ~114 MB). Now the file is picked from the device architecture:
+//   arm64  -> hena-arm64-v8a.apk   (~48 MB)
+//   arm 32 -> hena-armeabi-v7a.apk (~43 MB)
+//   x86_64 -> hena-x86_64.apk      (~50 MB)
+// Anything else keeps the universal APK as a safe fallback.
 const HENA_RELEASE_BASE =
     'https://github.com/ananbusiness88-hue/Hena-Downloads/releases/latest/download/';
 
@@ -296,14 +305,11 @@ function startHenaDownload(btn) {
         });
 }
 
-// Point the secondary "main version" link to the same architecture as well.
+// The secondary link stays on the universal APK as a manual fallback for the
+// rare device whose architecture was detected wrong.
 function applyHenaArchitectureToLinks() {
-    initHenaArchitecture().then((name) => {
-        document.querySelectorAll('a.cta-backup').forEach((link) => {
-            link.setAttribute('href', HENA_RELEASE_BASE + name);
-            if (name !== HENA_APK_BY_ARCH.arm64) {
-                link.textContent = '\u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u0646\u0633\u062e\u0629 \u0627\u0644\u0645\u0646\u0627\u0633\u0628\u0629 \u0644\u062c\u0647\u0627\u0632\u0643';
-            }
-        });
+    document.querySelectorAll('a.cta-backup').forEach((link) => {
+        link.setAttribute('href', HENA_RELEASE_BASE + HENA_APK_BY_ARCH.universal);
+        link.textContent = '\u062a\u062d\u0645\u064a\u0644 \u0646\u0633\u062e\u0629 \u0627\u062d\u062a\u064a\u0627\u0637\u064a\u0629 \u062a\u0639\u0645\u0644 \u0639\u0644\u0649 \u0643\u0644 \u0641\u0627\u0644\u0627\u062a\u062c\u0647\u0627\u0632\u0627\u062a';
     });
 }
