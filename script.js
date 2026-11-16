@@ -237,7 +237,7 @@ const HENA_APK_BY_ARCH = {
 let henaApkPromise = null;
 
 function detectHenaArchitectureFromUserAgent(ua) {
-    if (/x86_64|x86-64/i.test(ua)) return HENA_APK_BY_ARCH.x86;
+    if (/x86_64|x86-64|x86/i.test(ua)) return HENA_APK_BY_ARCH.x86;
     if (/i686|armeabi|armv7l/i.test(ua)) return HENA_APK_BY_ARCH.arm32;
 
     // Old Android versions shipped 32 bit binaries, newer ones are 64 bit.
