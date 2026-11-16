@@ -8,6 +8,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     initDownloadTracking();
+    initHenaArchitecture();
+    applyHenaArchitectureToLinks();
     initImageLoading();
     initScrollAnimations();
     initMobileMenu();
@@ -26,13 +28,12 @@ function initNavbar() {
         }
     });
 
-    // Download button click handlers
+    // Download button click handlers (architecture aware)
     const downloadButtons = document.querySelectorAll('.btn-download');
     downloadButtons.forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
-            const url = btn.getAttribute('data-url');
-            window.location.href = url;
+            startHenaDownload(btn);
         });
     });
 }
@@ -214,3 +215,95 @@ document.addEventListener('keydown', (e) => {
         }
     }
 });
+
+// ---------------------------------------------------------------------------
+// Architecture aware download
+// The main download button used to always serve the universal APK (all ABIs,
+// ~114 MB). Now the file is picked from the device architecture:
+//   arm64  -> hena-arm64-v8a.apk   (~48 MB)
+//   arm 32 -> hena-armeabi-v7a.apk (~43 MB)
+//   x86_64 -> hena-x86_64.apk      (~50 MB)
+// Anything else keeps the universal APK as a safe fallback.
+const HENA_RELEASE_BASE =
+    'https://github.com/ananbusiness88-hue/Hena-Downloads/releases/latest/download/';
+
+const HENA_APK_BY_ARCH = {
+    arm64: 'hena-arm64-v8a.apk',
+    arm32: 'hena-armeabi-v7a.apk',
+    x86: 'hena-x86_64.apk',
+    universal: 'Hena.apk'
+};
+
+let henaApkPromise = null;
+
+function detectHenaArchitectureFromUserAgent(ua) {
+    if (/x86_64|x86-64/i.test(ua)) return HENA_APK_BY_ARCH.x86;
+    if (/i686|armeabi|armv7l/i.test(ua)) return HENA_APK_BY_ARCH.arm32;
+
+    // Old Android versions shipped 32 bit binaries, newer ones are 64 bit.
+    const versionMatch = /android\s+([0-9]+)/i.exec(ua);
+    if (versionMatch && parseInt(versionMatch[1], 10) <= 6) {
+        return HENA_APK_BY_ARCH.arm32;
+    }
+    return HENA_APK_BY_ARCH.arm64;
+}
+
+function detectHenaArchitecture() {
+    const ua = navigator.userAgent || '';
+    const uaData = navigator.userAgentData;
+    const platform = (uaData && uaData.platform) || '';
+    const isAndroid = /android/i.test(ua) || /android/i.test(platform);
+
+    // Desktop / iOS visitors keep the universal file.
+    if (!isAndroid) return Promise.resolve(HENA_APK_BY_ARCH.universal);
+
+    if (uaData && typeof uaData.getHighEntropyValues === 'function') {
+        return uaData
+            .getHighEntropyValues(['architecture', 'bitness'])
+            .then((hints) => {
+                const arch = (hints && hints.architecture) || '';
+                const bitness = (hints && hints.bitness) || '';
+                if (arch === 'x86' || arch === 'x86_64') return HENA_APK_BY_ARCH.x86;
+                if (arch === 'arm') {
+                    return bitness === '32'
+                        ? HENA_APK_BY_ARCH.arm32
+                        : HENA_APK_BY_ARCH.arm64;
+                }
+                return detectHenaArchitectureFromUserAgent(ua);
+            })
+            .catch(() => detectHenaArchitectureFromUserAgent(ua));
+    }
+
+    return Promise.resolve(detectHenaArchitectureFromUserAgent(ua));
+}
+
+function initHenaArchitecture() {
+    if (!henaApkPromise) henaApkPromise = detectHenaArchitecture();
+    return henaApkPromise;
+}
+
+function startHenaDownload(btn) {
+    const fallback =
+        btn.getAttribute('data-url') ||
+        HENA_RELEASE_BASE + HENA_APK_BY_ARCH.universal;
+
+    initHenaArchitecture()
+        .then((name) => {
+            window.location.href = HENA_RELEASE_BASE + name;
+        })
+        .catch(() => {
+            window.location.href = fallback;
+        });
+}
+
+// Point the secondary "main version" link to the same architecture as well.
+function applyHenaArchitectureToLinks() {
+    initHenaArchitecture().then((name) => {
+        document.querySelectorAll('a.cta-backup').forEach((link) => {
+            link.setAttribute('href', HENA_RELEASE_BASE + name);
+            if (name !== HENA_APK_BY_ARCH.arm64) {
+                link.textContent = '\u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u0646\u0633\u062e\u0629 \u0627\u0644\u0645\u0646\u0627\u0633\u0628\u0629 \u0644\u062c\u0647\u0627\u0632\u0643';
+            }
+        });
+    });
+}
