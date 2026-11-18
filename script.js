@@ -233,6 +233,18 @@ document.addEventListener('keydown', (e) => {
 //   arm 32 -> hena-armeabi-v7a.apk (~43 MB)
 //   x86_64 -> hena-x86_64.apk      (~50 MB)
 // Anything else keeps the universal APK as a safe fallback.
+
+// ---------------------------------------------------------------------------
+// Architecture aware download
+// The main download button used to always serve the universal APK (all ABIs,
+// ~114 MB). Now the file is picked from the device architecture:
+//   arm64  -> hena-arm64-v8a.apk   (~48 MB)
+//   arm 32 -> hena-armeabi-v7a.apk (~43 MB)
+//   x86_64 -> hena-x86_64.apk      (~50 MB)
+// Anything else keeps the universal APK as a safe fallback.
+// The site is for phones, so the main button always serves the ARM64 build
+// (the one that matches almost every modern phone, ~48 MB instead of ~114 MB).
+// The file is only swapped for a confirmed 32 bit ARM or x86 device.
 const HENA_RELEASE_BASE =
     'https://github.com/ananbusiness88-hue/Hena-Downloads/releases/latest/download/';
 
@@ -263,8 +275,8 @@ function detectHenaArchitecture() {
     const platform = (uaData && uaData.platform) || '';
     const isAndroid = /android/i.test(ua) || /android/i.test(platform);
 
-    // Desktop / iOS visitors keep the universal file.
-    if (!isAndroid) return Promise.resolve(HENA_APK_BY_ARCH.universal);
+    // Desktop / iOS visitors get the ARM64 build too: this page is for phones.
+    if (!isAndroid) return Promise.resolve(HENA_APK_BY_ARCH.arm64);
 
     if (uaData && typeof uaData.getHighEntropyValues === 'function') {
         return uaData
@@ -294,7 +306,7 @@ function initHenaArchitecture() {
 function startHenaDownload(btn) {
     const fallback =
         btn.getAttribute('data-url') ||
-        HENA_RELEASE_BASE + HENA_APK_BY_ARCH.universal;
+        HENA_RELEASE_BASE + HENA_APK_BY_ARCH.arm64;
 
     initHenaArchitecture()
         .then((name) => {
