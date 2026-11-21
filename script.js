@@ -217,85 +217,48 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ---------------------------------------------------------------------------
-// Architecture aware download
-// The main download button used to always serve the universal APK (all ABIs,
-// ~114 MB). Now the file is picked from the device architecture:
-//   arm64  -> hena-arm64-v8a.apk   (~48 MB)
-//   arm 32 -> hena-armeabi-v7a.apk (~43 MB)
-//   x86_64 -> hena-x86_64.apk      (~50 MB)
-// Anything else keeps the universal APK as a safe fallback.
-
-// ---------------------------------------------------------------------------
-// Architecture aware download
-// The main download button used to always serve the universal APK (all ABIs,
-// ~114 MB). Now the file is picked from the device architecture:
-//   arm64  -> hena-arm64-v8a.apk   (~48 MB)
-//   arm 32 -> hena-armeabi-v7a.apk (~43 MB)
-//   x86_64 -> hena-x86_64.apk      (~50 MB)
-// Anything else keeps the universal APK as a safe fallback.
-
-// ---------------------------------------------------------------------------
-// Architecture aware download
-// The main download button used to always serve the universal APK (all ABIs,
-// ~114 MB). Now the file is picked from the device architecture:
-//   arm64  -> hena-arm64-v8a.apk   (~48 MB)
-//   arm 32 -> hena-armeabi-v7a.apk (~43 MB)
-//   x86_64 -> hena-x86_64.apk      (~50 MB)
-// Anything else keeps the universal APK as a safe fallback.
-// The site is for phones, so the main button always serves the ARM64 build
-// (the one that matches almost every modern phone, ~48 MB instead of ~114 MB).
-// The file is only swapped for a confirmed 32 bit ARM or x86 device.
-const HENA_RELEASE_BASE =
-    'https://github.com/ananbusiness88-hue/Hena-Downloads/releases/latest/download/';
-
+// Hena Android architecture-aware download.
+// Prefer Android Client Hints; use explicit UA architecture only when present.
+// Unknown Android phones default to ARM64. Other platforms use universal APK.
+const HENA_RELEASE_BASE = 'https://github.com/ananbusiness88-hue/Hena-Downloads/releases/latest/download/';
 const HENA_APK_BY_ARCH = {
     arm64: 'hena-arm64-v8a.apk',
     arm32: 'hena-armeabi-v7a.apk',
-    x86: 'hena-x86_64.apk',
+    x86_64: 'hena-x86_64.apk',
     universal: 'Hena.apk'
 };
-
 let henaApkPromise = null;
 
 function detectHenaArchitectureFromUserAgent(ua) {
-    if (/x86_64|x86-64|x86/i.test(ua)) return HENA_APK_BY_ARCH.x86;
-    if (/i686|armeabi|armv7l/i.test(ua)) return HENA_APK_BY_ARCH.arm32;
-
-    // Old Android versions shipped 32 bit binaries, newer ones are 64 bit.
-    const versionMatch = /android\s+([0-9]+)/i.exec(ua);
-    if (versionMatch && parseInt(versionMatch[1], 10) <= 6) {
-        return HENA_APK_BY_ARCH.arm32;
-    }
-    return HENA_APK_BY_ARCH.arm64;
+    if (/(?:x86_64|x86-64|amd64|x64)/i.test(ua)) return { file: HENA_APK_BY_ARCH.x86_64, label: 'x86 64-bit' };
+    if (/(?:i[3-6]86|i86pc)/i.test(ua)) return { file: HENA_APK_BY_ARCH.universal, label: 'النسخة الشاملة' };
+    if (/(?:armeabi-v7a|armv7l|armv7)/i.test(ua)) return { file: HENA_APK_BY_ARCH.arm32, label: 'ARM 32-bit' };
+    if (/(?:aarch64|arm64|armv8)/i.test(ua)) return { file: HENA_APK_BY_ARCH.arm64, label: 'ARM 64-bit' };
+    return { file: HENA_APK_BY_ARCH.arm64, label: 'ARM 64-bit' };
 }
 
-function detectHenaArchitecture() {
-    const ua = navigator.userAgent || '';
-    const uaData = navigator.userAgentData;
-    const platform = (uaData && uaData.platform) || '';
+async function detectHenaArchitecture() {
+    const ua = (navigator && navigator.userAgent) || '';
+    const uaData = navigator && navigator.userAgentData;
+    const platform = (uaData && uaData.platform) || navigator.platform || '';
     const isAndroid = /android/i.test(ua) || /android/i.test(platform);
-
-    // Desktop / iOS visitors get the ARM64 build too: this page is for phones.
-    if (!isAndroid) return Promise.resolve(HENA_APK_BY_ARCH.arm64);
+    if (!isAndroid) return { file: HENA_APK_BY_ARCH.universal, label: 'النسخة الشاملة' };
 
     if (uaData && typeof uaData.getHighEntropyValues === 'function') {
-        return uaData
-            .getHighEntropyValues(['architecture', 'bitness'])
-            .then((hints) => {
-                const arch = (hints && hints.architecture) || '';
-                const bitness = (hints && hints.bitness) || '';
-                if (arch === 'x86' || arch === 'x86_64') return HENA_APK_BY_ARCH.x86;
-                if (arch === 'arm') {
-                    return bitness === '32'
-                        ? HENA_APK_BY_ARCH.arm32
-                        : HENA_APK_BY_ARCH.arm64;
-                }
-                return detectHenaArchitectureFromUserAgent(ua);
-            })
-            .catch(() => detectHenaArchitectureFromUserAgent(ua));
+        try {
+            const hints = await uaData.getHighEntropyValues(['architecture', 'bitness']);
+            const arch = String((hints && hints.architecture) || '').toLowerCase();
+            const bitness = String((hints && hints.bitness) || '');
+            if (arch === 'arm' && bitness === '32') return { file: HENA_APK_BY_ARCH.arm32, label: 'ARM 32-bit' };
+            if (arch === 'arm' && bitness === '64') return { file: HENA_APK_BY_ARCH.arm64, label: 'ARM 64-bit' };
+            if (arch === 'arm64' || arch === 'aarch64') return { file: HENA_APK_BY_ARCH.arm64, label: 'ARM 64-bit' };
+            if ((arch === 'x86' || arch === 'x86_64') && bitness === '64') return { file: HENA_APK_BY_ARCH.x86_64, label: 'x86 64-bit' };
+            if (arch === 'x86' && bitness === '32') return { file: HENA_APK_BY_ARCH.universal, label: 'النسخة الشاملة' };
+        } catch (_) {
+            // Client Hints can be blocked; fall back to explicit UA tokens.
+        }
     }
-
-    return Promise.resolve(detectHenaArchitectureFromUserAgent(ua));
+    return detectHenaArchitectureFromUserAgent(ua);
 }
 
 function initHenaArchitecture() {
@@ -304,24 +267,22 @@ function initHenaArchitecture() {
 }
 
 function startHenaDownload(btn) {
-    const fallback =
-        btn.getAttribute('data-url') ||
-        HENA_RELEASE_BASE + HENA_APK_BY_ARCH.arm64;
-
-    initHenaArchitecture()
-        .then((name) => {
-            window.location.href = HENA_RELEASE_BASE + name;
-        })
-        .catch(() => {
-            window.location.href = fallback;
-        });
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    btn.textContent = 'جاري فحص نوع جهازك...';
+    initHenaArchitecture().then((result) => {
+        btn.textContent = 'تم تحديد ' + result.label + ' — جاري التحميل';
+        window.setTimeout(() => { window.location.href = HENA_RELEASE_BASE + result.file; }, 300);
+    }).catch(() => {
+        btn.textContent = 'جاري تنزيل النسخة الشاملة...';
+        window.setTimeout(() => { window.location.href = HENA_RELEASE_BASE + HENA_APK_BY_ARCH.universal; }, 300);
+    });
 }
 
-// The secondary link stays on the universal APK as a manual fallback for the
-// rare device whose architecture was detected wrong.
 function applyHenaArchitectureToLinks() {
     document.querySelectorAll('a.cta-backup').forEach((link) => {
         link.setAttribute('href', HENA_RELEASE_BASE + HENA_APK_BY_ARCH.universal);
-        link.textContent = '\u062a\u062d\u0645\u064a\u0644 \u0646\u0633\u062e\u0629 \u0627\u062d\u062a\u064a\u0627\u0637\u064a\u0629 \u062a\u0639\u0645\u0644 \u0639\u0644\u0649 \u0643\u0644 \u0641\u0627\u0644\u0627\u062a\u062c\u0647\u0627\u0632\u0627\u062a';
+        link.textContent = 'لو التحميل المناسب ما اشتغلش، نزّل النسخة الشاملة';
     });
 }
